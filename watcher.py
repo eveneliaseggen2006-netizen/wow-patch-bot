@@ -280,14 +280,53 @@ def build_message(post, lines, is_new):
     return {"embeds": [embed], "allowed_mentions": {"parse": []}}
 
 
-def send(message):
-    url = f"{DISCORD_API}/channels/{os.environ['DISCORD_CHANNEL_ID']}/messages"
-    data = json.dumps(message).encode()
-    headers = {
+def discord_headers():
+    return {
         "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
         "Content-Type": "application/json",
         "User-Agent": DISCORD_USER_AGENT,
     }
+
+
+def discord_call(method, path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    request = urllib.request.Request(
+        DISCORD_API + path, data=data, headers=discord_headers(), method=method
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def set_name(name):
+    """Sets the bot's username and server nickname. The nickname is what the
+    server shows, so it has to change too if one was set."""
+    me = discord_call("GET", "/users/@me")
+    channel = discord_call("GET", f"/channels/{os.environ['DISCORD_CHANNEL_ID']}")
+    guild = channel["guild_id"]
+    nick = discord_call("GET", f"/guilds/{guild}/members/{me['id']}").get("nick")
+    print(f"current username: {me['username']}, server nickname: {nick}")
+    changes = []
+    if me["username"] != name:
+        changes.append(("username", "/users/@me", {"username": name}))
+    if nick not in (None, name):
+        changes.append(("nickname", f"/guilds/{guild}/members/@me", {"nick": name}))
+    failed = False
+    for label, path, body in changes:
+        try:
+            discord_call("PATCH", path, body)
+            print(f"{label} changed to {name}")
+        except urllib.error.HTTPError as error:
+            failed = True
+            print(f"could not change {label}: {error.read().decode(errors='replace')}")
+    if not changes:
+        print("names already match")
+    return 1 if failed else 0
+
+
+def send(message):
+    url = f"{DISCORD_API}/channels/{os.environ['DISCORD_CHANNEL_ID']}/messages"
+    data = json.dumps(message).encode()
+    headers = discord_headers()
     for attempt in range(3):
         request = urllib.request.Request(url, data=data, headers=headers)
         try:
@@ -352,7 +391,11 @@ def main():
                         help="print what would be sent and change nothing")
     parser.add_argument("--test-post", action="store_true",
                         help="send the latest post to Discord now, to check the bot")
+    parser.add_argument("--set-name", help="rename the bot in Discord and exit")
     args = parser.parse_args()
+
+    if args.set_name:
+        return set_name(args.set_name)
 
     state = load_state()
     now = datetime.datetime.now(datetime.timezone.utc)

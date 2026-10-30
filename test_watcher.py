@@ -162,6 +162,37 @@ class SendTests(unittest.TestCase):
         self.assertTrue(request.get_header("User-agent").startswith("DiscordBot ("))
 
 
+class SetNameTests(unittest.TestCase):
+    def rename(self, name, nick):
+        replies = {
+            "/users/@me": {"id": "1", "username": "Orc Commander"},
+            "/channels/123": {"guild_id": "9"},
+            "/guilds/9/members/1": {"nick": nick},
+        }
+        env = {"DISCORD_BOT_TOKEN": "abc", "DISCORD_CHANNEL_ID": "123"}
+        calls = []
+
+        def call(method, path, body=None):
+            calls.append((method, path, body))
+            return replies[path] if method == "GET" else {}
+
+        with mock.patch.dict(watcher.os.environ, env), mock.patch.object(watcher, "discord_call", call):
+            result = watcher.set_name(name)
+        self.assertEqual(result, 0)
+        return [c for c in calls if c[0] == "PATCH"]
+
+    def test_changes_username_and_nickname(self):
+        self.assertEqual(self.rename("Warchief Thrall", "Orc Commander"), [
+            ("PATCH", "/users/@me", {"username": "Warchief Thrall"}),
+            ("PATCH", "/guilds/9/members/@me", {"nick": "Warchief Thrall"}),
+        ])
+
+    def test_leaves_an_unset_nickname_alone(self):
+        self.assertEqual(self.rename("Warchief Thrall", None), [
+            ("PATCH", "/users/@me", {"username": "Warchief Thrall"}),
+        ])
+
+
 class MessageTests(unittest.TestCase):
     def test_long_notes_fit_discord_limit(self):
         content = "".join(f"<ul><li>Change number {i}.</li></ul>" for i in range(2000))
