@@ -271,6 +271,7 @@ def send(message):
             return
         except urllib.error.HTTPError as error:
             if error.code != 429 or attempt == 2:
+                print(f"Discord refused the message: {error.read().decode(errors='replace')}")
                 raise
             time.sleep(float(error.headers.get("Retry-After") or 5))
 
