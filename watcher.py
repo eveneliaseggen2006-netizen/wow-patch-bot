@@ -357,7 +357,7 @@ def too_old_to_announce(post, now):
     return (now - published).days > MAX_UPDATE_AGE_DAYS
 
 
-def run(posts, state, post_message, now):
+def run(posts, state, post_message, now, persist=True):
     """Announces changes and records them. Saves after every send so a crash
     part way through can't repeat a message or lose one."""
     first_run = not state["posts"]
@@ -379,10 +379,37 @@ def run(posts, state, post_message, now):
         elif changed and not first_run:
             print(f"recorded without posting: {post['title']}")
         state["posts"][post_id] = keys
-        save_state(state)
+        if persist:
+            save_state(state)
     if first_run:
         print(f"first run: recorded {len(posts)} existing posts, nothing sent")
     return sent
+
+
+def test_update(now):
+    """Sends a made-up post and an update to it through the real pipeline, then
+    checks that a repeat sends nothing. state.json is not touched."""
+    def fake(content):
+        return {
+            "id": 1,
+            "title": "TEST, NOT REAL: WoW: Forever Hotfixes",
+            "url": "/news",
+            "published": now.isoformat(),
+            "content": content,
+        }
+
+    first = ("<p><strong>Test Hotfixes</strong></p>"
+             "<ul><li>Orgrimmar's walls now 10% spikier.</li></ul>")
+    second = first + ("<p><strong>Test Update</strong></p>"
+                      "<ul><li>Peons now complain 20% less.</li></ul>")
+    state = {"last_ok": None, "posts": {"0": []}}
+    results = [
+        run([fake(first)], state, send, now, persist=False),
+        run([fake(second)], state, send, now, persist=False),
+        run([fake(second)], state, send, now, persist=False),
+    ]
+    print(f"messages sent: new post {results[0]}, update {results[1]}, repeat {results[2]}")
+    return 0 if results == [1, 1, 0] else 1
 
 
 def main():
@@ -392,6 +419,8 @@ def main():
     parser.add_argument("--test-post", action="store_true",
                         help="send the latest post to Discord now, to check the bot")
     parser.add_argument("--set-name", help="rename the bot in Discord and exit")
+    parser.add_argument("--test-update", action="store_true",
+                        help="send a labelled fake post and an update to it")
     args = parser.parse_args()
 
     if args.set_name:
@@ -399,6 +428,8 @@ def main():
 
     state = load_state()
     now = datetime.datetime.now(datetime.timezone.utc)
+    if args.test_update:
+        return test_update(now)
     try:
         posts = fetch_notes()
     except (urllib.error.URLError, TimeoutError) as error:

@@ -9,6 +9,10 @@ on:
         description: Send the latest post to Discord now
         type: boolean
         default: false
+      fake_update:
+        description: Send a labelled fake post and an update to it
+        type: boolean
+        default: false
       bot_name:
         description: Rename the bot to this, instead of checking for notes
         type: string
@@ -36,7 +40,7 @@ jobs:
           if [ -n "$BOT_NAME" ]; then
             python3 watcher.py --set-name "$BOT_NAME"
           else
-            python3 watcher.py ${{ inputs.test_post && '--test-post' || '' }}
+            python3 watcher.py ${{ inputs.test_post && '--test-post' || '' }} ${{ inputs.fake_update && '--test-update' || '' }}
           fi
       - name: Save what was posted
         if: always()

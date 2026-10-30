@@ -162,6 +162,19 @@ class SendTests(unittest.TestCase):
         self.assertTrue(request.get_header("User-agent").startswith("DiscordBot ("))
 
 
+class FakeUpdateTests(unittest.TestCase):
+    def test_sends_post_then_only_the_update_and_saves_nothing(self):
+        with mock.patch.object(watcher, "send") as send, mock.patch.object(watcher, "save_state") as save:
+            result = watcher.test_update(NOW)
+        self.assertEqual(result, 0)
+        save.assert_not_called()
+        descriptions = [call.args[0]["embeds"][0]["description"] for call in send.call_args_list]
+        self.assertEqual(len(descriptions), 2)
+        self.assertIn("spikier", descriptions[0])
+        self.assertIn("Peons", descriptions[1])
+        self.assertNotIn("spikier", descriptions[1])
+
+
 class SetNameTests(unittest.TestCase):
     def rename(self, name, nick):
         replies = {
