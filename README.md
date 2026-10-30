@@ -1,8 +1,9 @@
-# WoW Patch Notes Bot
+# WoW: Forever Patch Notes Bot
 
-Posts World of Warcraft patch notes and hotfixes to a Discord channel, including
-WoW: Forever posts, which are labelled and coloured blue. GitHub Actions runs it
-every 15 minutes for free, so your PC doesn't need to be on.
+Posts World of Warcraft: Forever patch notes and hotfixes to a Discord channel. Other
+versions of WoW are ignored, and shared hotfix posts are cut down to their Forever
+sections. GitHub Actions runs it every 15 minutes for free, so your PC doesn't need
+to be on.
 
 It reads Blizzard's [content update notes](https://worldofwarcraft.blizzard.com/en-us/content-update-notes)
 and [news](https://worldofwarcraft.blizzard.com/en-us/news) pages. When a hotfix post
@@ -35,13 +36,14 @@ post. Posting still works normally.
 python watcher.py --dry-run
 ```
 
-Prints what the latest post would look like. Changes nothing.
+Prints what the latest Forever post would look like. Changes nothing.
 
 ```bash
 python watcher.py --test-post
 ```
 
-Sends the latest post to Discord. Needs `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` set.
+Sends the latest Forever post to Discord, if there is one. Needs `DISCORD_BOT_TOKEN`
+and `DISCORD_CHANNEL_ID` set.
 
 ```bash
 python -m unittest test_watcher

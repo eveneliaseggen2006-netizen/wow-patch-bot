@@ -1,4 +1,4 @@
-"""Posts World of Warcraft patch notes and hotfixes to Discord as a bot.
+"""Posts World of Warcraft: Forever patch notes and hotfixes to Discord as a bot.
 
 Run it on a schedule. Each run compares Blizzard's posts to state.json and
 sends only what is new. Blizzard adds to and retitles hotfix posts under the
@@ -33,6 +33,9 @@ DATE_LINE = re.compile(
     r"^(January|February|March|April|May|June|July|August|September|October"
     r"|November|December) \d{1,2}(, \d{4})?$"
 )
+FOREVER_WORD = re.compile(r"\bforever\b", re.I)
+FOREVER_NAME = re.compile(r"\b(wow|world of warcraft):?\s+forever\b", re.I)
+FOREVER_LABEL_LENGTH = 40  # A short line with the word is a section label, not a sentence.
 
 DESCRIPTION_LIMIT = 3900  # Discord allows 4096; leaves room for the footer line.
 MAX_POSTS_PER_RUN = 5  # Above this it's a Blizzard bulk edit, not real news.
@@ -40,8 +43,7 @@ MAX_UPDATE_AGE_DAYS = 60  # Edits to posts older than this are recorded silently
 MAX_TRACKED_POSTS = 60
 MAX_DOWN_DAYS = 2  # Fail the run (so GitHub emails you) after this long unreachable.
 
-COLOR_RETAIL = 0xF8B700
-COLOR_FOREVER = 0x3FC7EB
+COLOR = 0x3FC7EB
 
 
 class ParseError(Exception):
@@ -174,12 +176,37 @@ def line_keys(lines):
     return keys
 
 
-def new_lines(lines, keys, known):
-    """Lines not in known, plus the headings needed to make sense of them."""
+def _names_forever(text):
+    if FOREVER_NAME.search(text):
+        return True
+    return len(text) <= FOREVER_LABEL_LENGTH and bool(FOREVER_WORD.search(text))
+
+
+def forever_indexes(post, lines):
+    """Indexes of the lines about Forever. Blizzard's shared hotfix posts cover
+    every game, so those are filtered down to the Forever sections."""
+    if FOREVER_WORD.search(post["title"]):
+        return set(range(len(lines)))
+    parents = _parent_indexes(lines)
+    wanted = set()
+    for i, line in enumerate(lines):
+        if line.depth == 2 and parents[i] is None:
+            continue  # A post's intro names every game it covers.
+        at = i
+        while at is not None:
+            if _names_forever(lines[at].plain):
+                wanted.add(i)
+                break
+            at = parents[at]
+    return wanted
+
+
+def new_lines(lines, keys, known, wanted):
+    """Wanted lines not in known, plus the headings needed to make sense of them."""
     parents = _parent_indexes(lines)
     keep = set()
     for i, key in enumerate(keys):
-        if key not in known:
+        if i in wanted and key not in known:
             at = i
             while at is not None and at not in keep:
                 keep.add(at)
@@ -239,16 +266,13 @@ def build_message(post, lines, is_new):
             body += f"\n\n...and {len(lines) - i} more lines in the full notes."
             break
         body += ("\n" if body else "") + line.text
-    text = post["title"] + " " + " ".join(line.plain for line in lines)
-    forever = "forever" in text.lower()
     image = (post.get("thumbnail") or {}).get("url", "")
     embed = {
         "title": post["title"][:256],
         "url": url,
         "description": body,
-        "color": COLOR_FOREVER if forever else COLOR_RETAIL,
-        "footer": {"text": ("New post" if is_new else "Updated with new changes")
-                   + (" | WoW: Forever" if forever else "")},
+        "color": COLOR,
+        "footer": {"text": "New post" if is_new else "Updated with new changes"},
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     if image:
@@ -304,16 +328,16 @@ def run(posts, state, post_message, now):
         lines = parse_lines(post["content"])
         keys = line_keys(lines)
         known = state["posts"].get(post_id)
-        changed = new_lines(lines, keys, set(known or []))
-        if known is not None and not changed:
+        changed = new_lines(lines, keys, set(known or []), forever_indexes(post, lines))
+        if known == keys:
             continue
-        quiet = first_run or sent >= MAX_POSTS_PER_RUN
+        quiet = first_run or not changed or sent >= MAX_POSTS_PER_RUN
         quiet = quiet or (known is not None and too_old_to_announce(post, now))
         if not quiet:
             post_message(build_message(post, changed, known is None))
             sent += 1
             print(f"sent: {post['title']} ({len(changed)} lines)")
-        elif not first_run:
+        elif changed and not first_run:
             print(f"recorded without posting: {post['title']}")
         state["posts"][post_id] = keys
         save_state(state)
@@ -343,9 +367,15 @@ def main():
         return 1
 
     if args.dry_run or args.test_post:
-        latest = posts[-1]
-        lines = parse_lines(latest["content"])
-        message = build_message(latest, lines, True)
+        for latest in reversed(posts):
+            lines = parse_lines(latest["content"])
+            kept = new_lines(lines, line_keys(lines), set(), forever_indexes(latest, lines))
+            if kept:
+                break
+        else:
+            print("no Forever notes yet, nothing to send")
+            return 0
+        message = build_message(latest, kept, True)
         if args.test_post:
             send(message)
             print(f"test post sent: {latest['title']}")

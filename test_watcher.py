@@ -20,7 +20,17 @@ NEWER_SECTION = """<p><strong>October 29, 2026</strong></p>
 <ul><li>All damage done increased by 5%.</li></ul></li></ul>"""
 
 
-def post(content=HOTFIX, post_id=1, title="Hotfixes: October 27, 2026", published="2026-10-28T00:42:32.672Z"):
+SHARED_HOTFIX = """<p>Hotfixes for World of Warcraft: Midnight and World of Warcraft: Forever.</p>
+<p><strong>October 29, 2026</strong></p>
+<p><strong>Midnight</strong></p>
+<ul><li>Retail change.</li></ul>
+<p><strong>WoW: Forever</strong></p>
+<ul><li>Forever change.</li></ul>
+<p><strong>Classic</strong></p>
+<ul><li>This aura now lasts forever by mistake and has been fixed.</li></ul>"""
+
+
+def post(content=HOTFIX, post_id=1, title="WoW: Forever Hotfixes", published="2026-10-28T00:42:32.672Z"):
     return {"id": post_id, "slug": "hotfixes", "title": title, "url": "/news/1/hotfixes",
             "published": published, "content": content, "tags": ["hotfixes"]}
 
@@ -69,7 +79,7 @@ class RunTests(unittest.TestCase):
 
     def test_new_post_is_sent(self):
         state = seeded(post())
-        sent = run([post(), post(post_id=2, title="12.2 Content Update Notes")], state)
+        sent = run([post(), post(post_id=2, title="WoW: Forever 1.1 Patch Notes")], state)
         self.assertEqual(len(sent), 1)
         self.assertEqual(sent[0]["embeds"][0]["footer"]["text"], "New post")
 
@@ -84,7 +94,7 @@ class RunTests(unittest.TestCase):
 
     def test_retitle_alone_sends_nothing(self):
         state = seeded(post())
-        self.assertEqual(run([post(title="Hotfixes: June 3, 2026")], state), [])
+        self.assertEqual(run([post(title="WoW: Forever Hotfixes: June 3")], state), [])
 
     def test_formatting_change_sends_nothing(self):
         state = seeded(post())
@@ -115,6 +125,31 @@ class RunTests(unittest.TestCase):
         self.assertEqual(len(run([new], state)), 1)
 
 
+class ForeverOnlyTests(unittest.TestCase):
+    def test_other_games_are_recorded_but_not_sent(self):
+        state = seeded(post())
+        retail = post(post_id=2, title="12.2 Content Update Notes")
+        self.assertEqual(run([post(), retail], state), [])
+        self.assertIn("2", state["posts"])
+
+    def test_shared_hotfix_post_sends_only_the_forever_section(self):
+        state = seeded(post())
+        shared = post(SHARED_HOTFIX, post_id=2, title="Hotfixes: October 29, 2026")
+        description = run([post(), shared], state)[0]["embeds"][0]["description"]
+        self.assertIn("Forever change.", description)
+        self.assertIn("October 29, 2026", description)
+        self.assertNotIn("Retail change.", description)
+        self.assertNotIn("This aura", description)
+        self.assertNotIn("Hotfixes for", description)
+
+    def test_forever_added_to_a_known_shared_post_is_sent(self):
+        without = SHARED_HOTFIX.replace("<ul><li>Forever change.</li></ul>", "")
+        shared = post(without, post_id=2, title="Hotfixes: October 29, 2026")
+        state = seeded(shared)
+        updated = post(SHARED_HOTFIX, post_id=2, title="Hotfixes: October 29, 2026")
+        self.assertEqual(len(run([updated], state)), 1)
+
+
 class SendTests(unittest.TestCase):
     def test_posts_to_the_channel_as_the_bot(self):
         env = {"DISCORD_BOT_TOKEN": "abc", "DISCORD_CHANNEL_ID": "123"}
@@ -134,12 +169,6 @@ class MessageTests(unittest.TestCase):
         description = watcher.build_message(post(), lines, True)["embeds"][0]["description"]
         self.assertLessEqual(len(description), 4096)
         self.assertIn("more lines in the full notes", description)
-
-    def test_forever_is_labelled(self):
-        lines = watcher.parse_lines("<ul><li>Fixed a WoW: Forever quest.</li></ul>")
-        embed = watcher.build_message(post(), lines, False)["embeds"][0]
-        self.assertEqual(embed["color"], watcher.COLOR_FOREVER)
-        self.assertIn("WoW: Forever", embed["footer"]["text"])
 
     def test_only_notes_are_picked_up_from_news(self):
         ad = {"title": "Get Up to 50% In Fall Savings", "tags": []}
