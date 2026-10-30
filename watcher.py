@@ -304,10 +304,14 @@ def set_name(name):
     channel = discord_call("GET", f"/channels/{os.environ['DISCORD_CHANNEL_ID']}")
     guild = channel["guild_id"]
     nick = discord_call("GET", f"/guilds/{guild}/members/{me['id']}").get("nick")
-    print(f"current username: {me['username']}, server nickname: {nick}")
+    app_name = discord_call("GET", "/applications/@me").get("name")
+    print(f"current username: {me['username']}, display name: {me.get('global_name')}, "
+          f"server nickname: {nick}, application name: {app_name}")
     changes = []
     if me["username"] != name:
         changes.append(("username", "/users/@me", {"username": name}))
+    if me.get("global_name") not in (None, name):
+        changes.append(("display name", "/users/@me", {"global_name": name}))
     if nick not in (None, name):
         changes.append(("nickname", f"/guilds/{guild}/members/@me", {"nick": name}))
     failed = False

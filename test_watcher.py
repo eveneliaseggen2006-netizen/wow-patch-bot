@@ -176,9 +176,10 @@ class FakeUpdateTests(unittest.TestCase):
 
 
 class SetNameTests(unittest.TestCase):
-    def rename(self, name, nick):
+    def rename(self, name, nick, global_name=None):
         replies = {
-            "/users/@me": {"id": "1", "username": "Orc Commander"},
+            "/users/@me": {"id": "1", "username": "Orc Commander", "global_name": global_name},
+            "/applications/@me": {"name": "Warchief Thrall"},
             "/channels/123": {"guild_id": "9"},
             "/guilds/9/members/1": {"nick": nick},
         }
@@ -199,6 +200,12 @@ class SetNameTests(unittest.TestCase):
             ("PATCH", "/users/@me", {"username": "Warchief Thrall"}),
             ("PATCH", "/guilds/9/members/@me", {"nick": "Warchief Thrall"}),
         ])
+
+    def test_changes_a_stale_display_name(self):
+        self.assertIn(
+            ("PATCH", "/users/@me", {"global_name": "Warchief Thrall"}),
+            self.rename("Warchief Thrall", None, "Orc Commander"),
+        )
 
     def test_leaves_an_unset_nickname_alone(self):
         self.assertEqual(self.rename("Warchief Thrall", None), [
